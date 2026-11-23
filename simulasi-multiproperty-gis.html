@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulasi Multi Property</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* Meniru tampilan phase3/fe: sidebar gradasi biru, header & latar #EBF1FF, primer #0B57D0, rounded-xl, slate */
+:root{ --primary:#0B57D0; --primary-dark:#0842A5; --soft:#EBF1FF; --side-a:#D4E1FD; --side-b:#C7DBFF; color-scheme:light }
+html,body{height:100%}
+body{margin:0;background:var(--soft);color:#1e293b;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.sidebar{background:linear-gradient(180deg,var(--side-a) 0%,var(--side-b) 100%);box-shadow:inset -8px 0 16px rgba(0,0,0,.12),inset -2px 0 6px rgba(0,0,0,.08)}
+.nav-item.active{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.06);color:#000;font-weight:700}
+.rows{border-collapse:separate;border-spacing:0 10px}
+.rows tbody tr{background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.rows tbody td:first-child{border-radius:12px 0 0 12px}
+.rows tbody td:last-child{border-radius:0 12px 12px 0}
+.leaflet-container{font-family:inherit;border-radius:12px}
+.leaflet-popup-content-wrapper{border-radius:12px}
+.fade-in{animation:fi .18s ease-out}
+@keyframes fi{from{opacity:.4;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.fade-in{animation:none}}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<!-- Bar simulasi -->
+<div class="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs sm:text-sm">
+  <div class="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2">
+    <span class="font-bold uppercase tracking-wide text-[11px] bg-amber-200/70 px-2 py-0.5 rounded">Mode simulasi</span>
+    <span class="hidden md:inline">Data dummy, tersimpan di browser ini saja.</span>
+    <label for="roleSel" class="ml-auto font-semibold">Login sebagai</label>
+    <select id="roleSel" class="border border-amber-300 bg-white rounded-lg px-2 py-1 text-xs sm:text-sm max-w-[16rem]"></select>
+    <button id="btnLog" class="border border-amber-300 bg-white hover:bg-amber-100 rounded-lg px-2.5 py-1 font-semibold">Log API <span id="logCount" class="ml-1 text-[11px] bg-amber-200 rounded px-1">0</span></button>
+    <button id="btnReset" class="border border-amber-300 bg-white hover:bg-amber-100 rounded-lg px-2.5 py-1 font-semibold">Reset data</button>
+  </div>
+</div>
+
+<div class="flex" style="height:calc(100% - 41px)">
+  <aside id="sidebar" class="sidebar w-64 shrink-0 hidden lg:flex flex-col"></aside>
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="border-b border-blue-200/80 shadow-[0_4px_16px_rgba(0,0,0,0.06)]" style="background:#EBF1FF">
+      <div class="flex items-center justify-between h-16 px-3 sm:px-6 gap-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <button id="btnMenu" class="lg:hidden p-2 rounded-xl hover:bg-blue-200/60" aria-label="Buka menu">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-white/80 border border-blue-200/70 rounded-full">
+            <svg class="w-3.5 h-3.5 text-[#0B57D0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+            <span class="text-xs font-bold text-[#0B57D0] tracking-wide uppercase font-mono">ESICS</span>
+          </div>
+          <svg class="hidden sm:block w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+          <span id="pageTitle" class="text-sm md:text-base font-extrabold text-slate-800 tracking-tight truncate"></span>
+        </div>
+        <div id="userChip" class="flex items-center gap-2.5 p-1 pl-1.5 pr-3 rounded-full bg-white/90 border border-blue-200/80 min-w-0"></div>
+      </div>
+    </header>
+    <main id="main" class="flex-1 overflow-auto p-3.5 sm:p-5 md:p-6" style="background:#EBF1FF"></main>
+  </div>
+</div>
+
+<!-- Sidebar mobile -->
+<div id="mobileNav" class="fixed inset-0 z-40 hidden">
+  <div class="absolute inset-0 bg-slate-900/40" data-close-nav></div>
+  <aside id="sidebarMobile" class="sidebar absolute inset-y-0 left-0 w-72 max-w-[85vw] flex flex-col shadow-2xl"></aside>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-slate-900/40" data-close-modal></div>
+  <div class="absolute inset-0 flex items-start sm:items-center justify-center p-3 overflow-auto pointer-events-none">
+    <div id="modalBox" class="pointer-events-auto bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-6 fade-in"></div>
+  </div>
+</div>
+
+<!-- Log API -->
+<div id="logPanel" class="fixed right-3 bottom-3 z-40 w-[min(30rem,calc(100vw-24px))] max-h-[60vh] bg-slate-900 text-slate-100 rounded-xl shadow-2xl hidden flex-col">
+  <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-700">
+    <span class="font-bold text-sm">Log API (simulasi sesuai rencana backend)</span>
+    <button id="btnLogClose" class="text-slate-400 hover:text-white text-sm px-2" aria-label="Tutup log">✕</button>
+  </div>
+  <div id="logBody" class="overflow-auto p-3 space-y-1.5 font-mono text-[11.5px]"></div>
+</div>
+
+<!-- Toast -->
+<div id="toasts" class="fixed top-14 right-3 z-[60] space-y-2 w-[min(24rem,calc(100vw-24px))]"></div>
+
+<script>
+/* ================= DB DUMMY ================= */
+const LS_KEY = "myesics-sim-multiproperty-v1";
+const DAY = 864e5;
+const iso = (daysAgo) => new Date(Date.now() - daysAgo * DAY).toISOString();
+
+function makeData(n, empty) {
+  if (empty) return { emr: [], audit: null, regulasi: [], csa: null, wb: null };
+  let s = n * 7919 + 13;
+  const r = (a, b) => { s = (s * 9301 + 49297) % 233280; return Math.round((a + s / 233280 * (b - a)) * 10) / 10; };
+  return {
+    emr: [
+      { id: 1, jenis: "Air Limbah", titik: "Outlet IPAL 1", parameter: "BOD", nilai: r(18, 34), baku: 30, satuan: "mg/L", tanggal: iso(n % 5 + 1) },
+      { id: 2, jenis: "Air Limbah", titik: "Outlet IPAL 1", parameter: "COD", nilai: r(55, 92), baku: 100, satuan: "mg/L", tanggal: iso(n % 5 + 1) },
+      { id: 3, jenis: "Gas Emisi", titik: "Cerobong Boiler", parameter: "SO₂", nilai: r(180, 640), baku: 600, satuan: "mg/Nm³", tanggal: iso(n % 7 + 3) },
+      { id: 4, jenis: "Gas Emisi", titik: "Cerobong Boiler", parameter: "NO₂", nilai: r(220, 480), baku: 550, satuan: "mg/Nm³", tanggal: iso(n % 7 + 3) },
+      { id: 5, jenis: "Udara Ambient", titik: "Batas Pagar Utara", parameter: "PM2.5", nilai: r(28, 62), baku: 55, satuan: "µg/Nm³", tanggal: iso(n % 9 + 6) },
+    ],
+    audit: { skor: Math.round(r(68, 93)), temuan: Math.round(r(1, 6)), status: "Selesai", tanggal: iso(30 + n) },
+    regulasi: [
+      { nama: "PP 22/2021 Penyelenggaraan PPLH", status: "Patuh" },
+      { nama: "Permen LHK 5/2021 Baku Mutu Air Limbah", status: n % 3 ? "Patuh" : "Dalam proses" },
+      { nama: "Permen LHK 11/2021 Baku Mutu Emisi Mesin", status: n % 2 ? "Patuh" : "Belum patuh" },
+      { nama: "PP 101/2014 Pengelolaan Limbah B3", status: "Patuh" },
+    ],
+    csa: { skor: Math.round(r(62, 91)), tanggal: iso(14 + n) },
+    wb: { input: Math.round(r(8000, 15000)), konsumsi: Math.round(r(5500, 9000)), limbah: Math.round(r(1200, 2800)), recycle: Math.round(r(200, 900)) },
+  };
+}
+
+function seed() {
+  return {
+    seq: { request: 3, user: 200, emr: 100 },
+    session: { userId: 101 },
+    packages: [
+      { id: 4, name: "Paket Esensial", harga: 15628960, isCustom: false },
+      { id: 5, name: "Paket Standar", harga: 17008960, isCustom: false },
+      { id: 6, name: "Paket Premium", harga: 25748960, isCustom: false },
+      { id: 7, name: "Paket Custom Grup", harga: 48500000, isCustom: true },
+    ],
+    companies: [
+      { id: "1202611001", personKey: 12, name: "PT Sinar Hijau Group", parentCompanyId: null, path: "/1202611001/", depth: 0 },
+      { id: "1302611001", personKey: 13, name: "PT Sinar Hijau Karawang", parentCompanyId: "1202611001", path: "/1202611001/1302611001/", depth: 1 },
+      { id: "1402611001", personKey: 14, name: "PT Sinar Hijau Cilegon", parentCompanyId: "1202611001", path: "/1202611001/1402611001/", depth: 1 },
+      { id: "2002611001", personKey: 20, name: "PT Maju Bersama", parentCompanyId: null, path: "/2002611001/", depth: 0 },
+      { id: "2102611001", personKey: 21, name: "PT Tirta Nusantara", parentCompanyId: null, path: "/2102611001/", depth: 0 },
+    ],
+    users: [
+      { id: 1, personKey: 1, name: "Admin MyESICS", email: "admin@myesics.id", username: "admin", role: "admin" },
+      { id: 101, personKey: 12, name: "Rina Wulandari", email: "hse@sinarhijau.co.id", username: "rina.wulandari", role: "member" },
+      { id: 102, personKey: 13, name: "Dedi Kurniawan", email: "hse@sinarhijau-krw.co.id", username: "dedi.kurniawan", role: "member" },
+      { id: 103, personKey: 14, name: "Sari Anggraini", email: "hse@sinarhijau-clg.co.id", username: "sari.anggraini", role: "member" },
+      { id: 104, personKey: 20, name: "Andi Saputra", email: "ehs@majubersama.co.id", username: "andi.saputra", role: "member" },
+      { id: 105, personKey: 21, name: "Maya Lestari", email: "lingkungan@tirtanusantara.co.id", username: "maya.lestari", role: "member" },
+    ],
+    subscriptions: [
+      { companyId: "1202611001", packageId: 7, status: "active", endDate: iso(-310) },
+      { companyId: "2002611001", packageId: 5, status: "active", endDate: iso(-120) },
+      { companyId: "2102611001", packageId: 4, status: "active", endDate: iso(-200) },
+    ],
+    gis: {
+      "1202611001": { lat: -6.2146, lng: 106.8227, address: "Jl. Jend. Sudirman Kav. 52, Jakarta Selatan" },
+      "1302611001": { lat: -6.3633, lng: 107.3016, address: "Kawasan Industri KIIC, Karawang" },
+      "1402611001": { lat: -6.0186, lng: 106.0559, address: "Kawasan Industri Krakatau, Cilegon" },
+      "2002611001": { lat: -6.9175, lng: 107.6191, address: "Jl. Soekarno-Hatta, Bandung" },
+      "2102611001": { lat: -6.4058, lng: 106.0640, address: "Jl. Raya Serang, Kab. Serang" },
+    },
+    requests: [
+      { id: 1, parentCompanyId: "1202611001", requestedByUserId: 101, companyName: "PT Sinar Hijau Surabaya", picName: "Bagus Pratama", picEmail: "bagus@sinarhijau-sby.co.id", picPhone: "081234567890", address: "Kawasan Industri Rungkut, Surabaya", lat: -7.3305, lng: 112.768, notes: "Pabrik baru, mulai operasi Januari 2027.", status: "pending", createdAt: iso(1) },
+      { id: 2, parentCompanyId: "1202611001", requestedByUserId: 101, companyName: "PT Sinar Hijau Medan", picName: "Lina Siregar", picEmail: "lina@sinarhijau-mdn.co.id", picPhone: "081377788899", address: "KIM II, Medan", lat: 3.6926, lng: 98.6905, notes: "", status: "rejected", rejectReason: "Dokumen legalitas belum lengkap, mohon lampirkan NIB.", reviewedBy: "Admin MyESICS", reviewedAt: iso(5), createdAt: iso(8) },
+    ],
+    data: {
+      "1202611001": makeData(3), "1302611001": makeData(7), "1402611001": makeData(11),
+      "2002611001": makeData(5), "2102611001": makeData(2),
+    },
+  };
+}
+
+let db;
+function load() { try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; } }
+function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {} }
+db = load() || seed();
+
+/* ================= HELPERS ================= */
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = (s) => s ? new Date(s).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-";
+const fmtNum = (n) => Number(n).toLocaleString("id-ID");
+const rupiah = (n) => "Rp " + fmtNum(n);
+function ago(s) { if (!s) return "belum ada data"; const d = Math.floor((Date.now() - new Date(s)) / DAY); return d <= 0 ? "hari ini" : d === 1 ? "kemarin" : d + " hari lalu"; }
+
+const me = () => db.users.find((u) => u.id === db.session.userId);
+const isAdmin = () => me()?.role === "admin";
+const companyOf = (user) => db.companies.find((c) => c.personKey === user?.personKey);
+const myCompany = () => companyOf(me());
+const company = (id) => db.companies.find((c) => c.id === id);
+const pkg = (id) => db.packages.find((p) => p.id === id);
+const usersOf = (c) => db.users.filter((u) => u.personKey === c.personKey);
+const childrenOf = (id) => db.companies.filter((c) => c.parentCompanyId === id);
+const activeSub = (cid) => db.subscriptions.find((s) => s.companyId === cid && s.status === "active" && new Date(s.endDate) > new Date());
+
+/** helper rencana: hasMultiProperty(companyId) = langganan aktif + paket isCustom */
+function hasMultiProperty(cid) { const s = activeSub(cid); return !!(s && pkg(s.packageId)?.isCustom); }
+
+function dataOf(cid) { return db.data[cid] || (db.data[cid] = makeData(0, true)); }
+function lastUpdate(cid) { const e = dataOf(cid).emr; return e.length ? e.map((x) => x.tanggal).sort().at(-1) : null; }
+function regPct(cid) { const r = dataOf(cid).regulasi; if (!r.length) return null; return Math.round(r.filter((x) => x.status === "Patuh").length / r.length * 100); }
+function overCount(cid) { return dataOf(cid).emr.filter((x) => x.nilai > x.baku).length; }
+
+/* ================= LOG API & TOAST ================= */
+const logs = [];
+function api(method, path, status, note) {
+  logs.unshift({ t: new Date().toLocaleTimeString("id-ID"), method, path, status, note, by: me()?.username });
+  $("#logCount").textContent = logs.length;
+  renderLog();
+}
+function renderLog() {
+  const col = (s) => s >= 400 ? "text-rose-300" : s >= 300 ? "text-amber-300" : "text-emerald-300";
+  $("#logBody").innerHTML = logs.length ? logs.map((l) =>
+    `<div class="border-b border-slate-800 pb-1.5"><span class="text-slate-500">${l.t}</span> <b class="text-sky-300">${l.method}</b> ${esc(l.path)} <b class="${col(l.status)}">${l.status}</b><div class="text-slate-400 font-sans">${esc(l.note || "")} <span class="text-slate-600">· ${esc(l.by)}</span></div></div>`).join("")
+    : `<p class="text-slate-500 font-sans">Belum ada request. Coba klik menu atau tombol.</p>`;
+}
+function toast(msg, type = "ok") {
+  const c = { ok: "border-emerald-200 bg-emerald-50 text-emerald-900", err: "border-rose-200 bg-rose-50 text-rose-900", info: "border-blue-200 bg-white text-slate-800" }[type];
+  const el = document.createElement("div");
+  el.className = `fade-in border rounded-xl px-4 py-3 text-sm shadow-lg ${c}`;
+  el.innerHTML = msg;
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), 4800);
+}
+
+/* ================= ICONS ================= */
+const I = {
+  home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  check: '<path d="M9 4h6l1 2h3v14H5V6h3z"/><path d="M9 13l2 2 4-4"/>',
+  drop: '<path d="M12 3c3 4 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 3-7 6-11z"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  wave: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
+  book: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6"/>',
+  build: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/>',
+  map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  send: '<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5 5h14l3 7v7H2v-7z"/>',
+  tree: '<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-2h14v2"/>',
+  pkg: '<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  pin: '<path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+};
+const ic = (n, cls = "w-5 h-5") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
+
+/* ================= ROUTER ================= */
+let route = { view: "dashboard", params: {} };
+function go(view, params = {}) { route = { view, params }; closeNav(); render(); }
+
+const TITLES = {
+  dashboard: "Dashboard", own: "Data Saya", "mp-children": "Multi Property · Anak Perusahaan", "mp-child": "Multi Property · Data Anak Perusahaan",
+  "mp-map": "Multi Property · Peta GIS", "mp-requests": "Multi Property · Pengajuan", "adm-requests": "Admin · Pengajuan Anak Perusahaan",
+  "adm-companies": "Admin · Hierarki Perusahaan", "adm-packages": "Admin · Paket",
+};
+
+/* ================= SIDEBAR ================= */
+function navItem(view, label, icon, params = {}, extra = "") {
+  const active = route.view === view && (params.tab ? route.params.tab === params.tab : true);
+  return `<button class="nav-item ${active ? "active" : "text-gray-600 hover:bg-white/60 hover:text-gray-800"} flex items-center gap-3 px-3 py-2.5 w-full rounded-xl text-sm text-left transition-colors" data-go="${view}" data-params='${esc(JSON.stringify(params))}'>${ic(icon, "w-5 h-5 shrink-0")}<span class="flex-1">${label}</span>${extra}</button>`;
+}
+function sidebarHtml() {
+  const u = me(), c = myCompany();
+  let h = `<div class="px-5 py-5 border-b border-blue-100/60 flex items-center gap-2"><div class="w-9 h-9 rounded-xl bg-[#0B57D0] text-white grid place-items-center font-black">E</div><div><div class="font-extrabold text-slate-800 leading-none">MyESICS</div><div class="text-[11px] text-slate-500 mt-0.5">Environmental Compliance</div></div></div><nav class="flex-1 overflow-y-auto py-3 px-2 space-y-1">`;
+  if (isAdmin()) {
+    const pend = db.requests.filter((r) => r.status === "pending").length;
+    h += `<div class="px-3 pt-2 pb-1 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Admin</div>`;
+    h += navItem("adm-requests", "Pengajuan Anak", "inbox", {}, pend ? `<span class="text-[11px] font-bold bg-[#0B57D0] text-white rounded-full px-2">${pend}</span>` : "");
+    h += navItem("adm-companies", "Hierarki Perusahaan", "tree");
+    h += navItem("adm-packages", "Paket", "pkg");
+  } else {
+    h += navItem("dashboard", "Dashboard", "home");
+    if (c && c.depth === 0) {
+      const ok = hasMultiProperty(c.id);
+      const lock = ok ? "" : ic("lock", "w-4 h-4 text-slate-400");
+      h += `<div class="px-3 pt-3 pb-1 text-[10px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-1.5">Multi Property ${ok ? '<span class="normal-case tracking-normal font-semibold text-[10px] bg-[#0B57D0] text-white rounded px-1.5">Custom</span>' : ""}</div>`;
+      h += navItem("mp-children", "Anak Perusahaan", "build", {}, lock) + navItem("mp-map", "Peta GIS", "map", {}, lock) + navItem("mp-requests", "Pengajuan", "send", {}, lock);
+    }
+  }
+  h += `</nav><div class="p-3 text-[11px] text-slate-500 border-t border-blue-100/60">Simulasi rencana backend · 23 Nov 2026</div>`;
+  return h;
+}
+
+/* ================= KOMPONEN ================= */
+const card = (inner, cls = "") => `<div class="bg-white rounded-2xl border border-blue-100 shadow-sm ${cls}">${inner}</div>`;
+const btn = (label, attrs = "", kind = "primary") => {
+  const k = { primary: "bg-[#0B57D0] hover:bg-[#0842A5] text-white shadow-md", ghost: "bg-white border border-slate-200 hover:bg-slate-50 text-slate-700", danger: "bg-white border border-rose-200 text-rose-700 hover:bg-rose-50", ok: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md" }[kind];
+  return `<button class="${k} font-bold rounded-xl px-4 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed" ${attrs}>${label}</button>`;
+};
+const STATUS = {
+  pending: ["Menunggu", "bg-amber-50 text-amber-700 border-amber-200"],
+  approved: ["Disetujui", "bg-emerald-50 text-emerald-700 border-emerald-200"],
+  rejected: ["Ditolak", "bg-rose-50 text-rose-700 border-rose-200"],
+  cancelled: ["Dibatalkan", "bg-slate-100 text-slate-600 border-slate-200"],
+};
+const badge = (s) => `<span class="inline-flex items-center text-[11px] font-bold border rounded-full px-2.5 py-0.5 ${STATUS[s][1]}">${STATUS[s][0]}</span>`;
+const pill = (text, cls) => `<span class="inline-flex items-center text-[11px] font-bold rounded-full px-2.5 py-0.5 ${cls}">${text}</span>`;
+const stat = (label, value, sub = "") => `<div class="bg-white rounded-2xl border border-blue-100 shadow-sm p-4 min-w-0"><div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">${label}</div><div class="text-2xl font-extrabold text-slate-800 mt-1 tabular-nums">${value}</div>${sub ? `<div class="text-xs text-slate-500 mt-0.5">${sub}</div>` : ""}</div>`;
+const pageHead = (title, sub, right = "") => `<div class="flex flex-wrap items-end justify-between gap-3 mb-5"><div class="min-w-0"><h1 class="text-2xl font-semibold tracking-tight text-slate-900">${title}</h1>${sub ? `<p class="text-sm text-slate-500 mt-1">${sub}</p>` : ""}</div><div class="flex flex-wrap gap-2">${right}</div></div>`;
+const field = (id, label, value = "", attrs = "", type = "text") => `<div class="space-y-1.5"><label for="${id}" class="text-sm font-medium text-slate-700">${label}</label><input id="${id}" type="${type}" value="${esc(value)}" ${attrs} class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:border-[#0B57D0] focus:ring-2 focus:ring-blue-100 outline-none"></div>`;
+
+function lockedPage() {
+  const c = myCompany(); const s = activeSub(c.id);
+  return card(`<div class="p-8 sm:p-12 text-center max-w-xl mx-auto space-y-4"><div class="w-14 h-14 rounded-2xl bg-blue-50 text-[#0B57D0] grid place-items-center mx-auto">${ic("lock", "w-7 h-7")}</div>
+    <h2 class="text-xl font-bold text-slate-800">Fitur khusus Paket Custom</h2>
+    <p class="text-sm text-slate-500">Multi Property & Peta GIS tersedia untuk perusahaan dengan langganan <b>paket custom</b> yang aktif. Paket Anda saat ini: <b>${esc(s ? pkg(s.packageId).name : "tidak ada langganan aktif")}</b>.</p>
+    <p class="text-xs text-slate-400">Backend: <code>hasMultiProperty()</code> bernilai false, endpoint mengembalikan 403.</p></div>`);
+}
+
+/* ================= HALAMAN MEMBER ================= */
+function viewDashboard() {
+  const c = myCompany(), d = dataOf(c.id), s = activeSub(c.id), parent = c.parentCompanyId && company(c.parentCompanyId);
+  let h = pageHead(`Halo, ${esc(me().name.split(" ")[0])}`, `${esc(c.name)} · ${s ? esc(pkg(s.packageId).name) + " aktif s.d. " + fmtDate(s.endDate) : parent ? "Mengikuti langganan induk: " + esc(parent.name) : "Tidak ada langganan aktif"}`, btn("+ Tambah data EMR contoh", 'data-act="emr-add"', "ghost"));
+  h += `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">${stat("Data EMR", d.emr.length, overCount(c.id) ? `<span class="text-rose-600 font-semibold">${overCount(c.id)} melebihi baku mutu</span>` : "semua memenuhi")}${stat("Skor CSA", d.csa ? d.csa.skor : "-", d.csa ? fmtDate(d.csa.tanggal) : "belum ada")}${stat("Regulasi patuh", regPct(c.id) != null ? regPct(c.id) + "%" : "-", d.regulasi.length + " regulasi")}${stat("Pemakaian air", d.wb ? fmtNum(d.wb.konsumsi) : "-", "m³/bulan")}</div>`;
+  if (c.depth === 0 && hasMultiProperty(c.id)) {
+    const kids = childrenOf(c.id), pend = db.requests.filter((r) => r.parentCompanyId === c.id && r.status === "pending").length;
+    h += card(`<div class="p-5 flex flex-wrap items-center gap-4"><div class="w-12 h-12 rounded-xl bg-blue-50 text-[#0B57D0] grid place-items-center">${ic("build", "w-6 h-6")}</div><div class="flex-1 min-w-0"><div class="font-bold text-slate-800">Multi Property aktif</div><div class="text-sm text-slate-500">${kids.length} anak perusahaan terhubung${pend ? ` · ${pend} pengajuan menunggu admin` : ""}</div></div>${btn("Lihat peta", 'data-go="mp-map"', "ghost")}${btn("Lihat anak perusahaan", 'data-go="mp-children"')}</div>`);
+  } else if (parent) {
+    h += card(`<div class="p-5 text-sm text-slate-600 flex gap-3 items-start">${ic("tree", "w-5 h-5 text-[#0B57D0] shrink-0")}<span>Perusahaan Anda adalah anak perusahaan dari <b>${esc(parent.name)}</b>. Induk dapat <b>melihat</b> data lingkungan Anda (tidak bisa mengubah). Anda tidak dapat melihat data induk atau anak perusahaan lain.</span></div>`);
+  }
+  return h;
+}
+
+const TABS = [["emr", "EMR"], ["audit", "Audit"], ["regulasi", "Regulasi"], ["csa", "CSA"], ["wb", "Water Balance"]];
+function tabsHtml(active, view, params) {
+  return `<div class="flex gap-1 bg-white/70 border border-blue-100 rounded-xl p-1 mb-4 overflow-x-auto">${TABS.map(([k, l]) => `<button class="px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap ${k === active ? "bg-[#0B57D0] text-white font-bold shadow" : "text-slate-600 hover:bg-white"}" data-go="${view}" data-params='${esc(JSON.stringify({ ...params, tab: k }))}'>${l}</button>`).join("")}</div>`;
+}
+function moduleContent(cid, tab, readOnly) {
+  const d = dataOf(cid);
+  const editBtn = readOnly ? btn("Ubah", `data-act="ro-edit" data-cid="${cid}" data-tab="${tab}"`, "ghost") : "";
+  const empty = (t) => card(`<div class="p-10 text-center text-sm text-slate-500">${t}</div>`);
+  if (tab === "emr") {
+    if (!d.emr.length) return empty("Belum ada data EMR." + (readOnly ? "" : " Klik <b>Tambah data contoh</b> untuk mengisi."));
+    return `<div class="relative w-full overflow-x-auto"><table class="rows w-full min-w-[760px] text-sm"><thead><tr class="text-[10px] uppercase font-bold text-slate-400 tracking-wider"><th class="px-4 text-left">Jenis</th><th class="px-4 text-left">Titik</th><th class="px-4 text-left">Parameter</th><th class="px-4 text-right">Nilai</th><th class="px-4 text-right">Baku mutu</th><th class="px-4 text-left">Status</th><th class="px-4 text-left">Tanggal</th><th class="px-4 text-right">Aksi</th></tr></thead><tbody>${d.emr.slice().sort((a, b) => b.tanggal.localeCompare(a.tanggal)).map((e) => `<tr><td class="p-4 font-semibold text-slate-800">${esc(e.jenis)}</td><td class="p-4 text-slate-600">${esc(e.titik)}</td><td class="p-4">${esc(e.parameter)}</td><td class="p-4 text-right font-mono tabular-nums">${e.nilai}</td><td class="p-4 text-right font-mono tabular-nums text-slate-500">${e.baku} <span class="text-[11px]">${esc(e.satuan)}</span></td><td class="p-4">${e.nilai > e.baku ? pill("Melebihi", "bg-rose-50 text-rose-700") : pill("Memenuhi", "bg-emerald-50 text-emerald-700")}</td><td class="p-4 text-slate-500">${fmtDate(e.tanggal)}</td><td class="p-4 text-right">${readOnly ? `<button class="text-xs font-semibold text-slate-400 border border-slate-200 rounded-lg px-2.5 py-1 hover:bg-slate-50" data-act="ro-edit" data-cid="${cid}" data-tab="emr">Ubah</button>` : `<button class="text-xs font-semibold text-rose-600 border border-rose-200 rounded-lg px-2.5 py-1 hover:bg-rose-50" data-act="emr-del" data-id="${e.id}">Hapus</button>`}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  if (tab === "audit") {
+    if (!d.audit) return empty("Belum ada data audit.");
+    return card(`<div class="p-5 grid sm:grid-cols-4 gap-4"><div><div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Skor audit</div><div class="text-3xl font-extrabold tabular-nums">${d.audit.skor}</div></div><div><div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Temuan</div><div class="text-3xl font-extrabold tabular-nums">${d.audit.temuan}</div></div><div><div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Status</div><div class="mt-2">${pill(d.audit.status, "bg-emerald-50 text-emerald-700")}</div></div><div><div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Tanggal</div><div class="mt-2 font-semibold">${fmtDate(d.audit.tanggal)}</div></div></div><div class="px-5 pb-5">${editBtn}</div>`);
+  }
+  if (tab === "regulasi") {
+    if (!d.regulasi.length) return empty("Belum ada data regulasi.");
+    const col = { Patuh: "bg-emerald-50 text-emerald-700", "Dalam proses": "bg-amber-50 text-amber-700", "Belum patuh": "bg-rose-50 text-rose-700" };
+    return card(`<div class="divide-y divide-slate-100">${d.regulasi.map((r) => `<div class="flex items-center justify-between gap-3 px-5 py-3.5"><span class="text-sm font-medium text-slate-700 min-w-0">${esc(r.nama)}</span>${pill(r.status, col[r.status])}</div>`).join("")}</div><div class="p-5 pt-3">${editBtn}</div>`);
+  }
+  if (tab === "csa") {
+    if (!d.csa) return empty("Belum ada penilaian CSA.");
+    const k = d.csa.skor >= 80 ? ["Baik", "bg-emerald-500"] : d.csa.skor >= 65 ? ["Cukup", "bg-amber-500"] : ["Perlu perbaikan", "bg-rose-500"];
+    return card(`<div class="p-5 space-y-3"><div class="flex items-end justify-between"><div><div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Skor CSA</div><div class="text-4xl font-extrabold tabular-nums">${d.csa.skor}<span class="text-base text-slate-400">/100</span></div></div><div class="text-sm text-slate-500">${k[0]} · ${fmtDate(d.csa.tanggal)}</div></div><div class="h-2.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${k[1]}" style="width:${d.csa.skor}%"></div></div>${editBtn}</div>`);
+  }
+  if (tab === "wb") {
+    if (!d.wb) return empty("Belum ada data water balance.");
+    const w = d.wb, rows = [["Air masuk", w.input, "bg-[#0B57D0]"], ["Konsumsi", w.konsumsi, "bg-sky-500"], ["Air limbah", w.limbah, "bg-amber-500"], ["Daur ulang", w.recycle, "bg-emerald-500"]];
+    return card(`<div class="p-5 space-y-3">${rows.map(([l, v, c]) => `<div class="grid grid-cols-[7rem_1fr_6rem] items-center gap-3 text-sm"><span class="text-slate-600">${l}</span><div class="h-3 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${c}" style="width:${Math.round(v / w.input * 100)}%"></div></div><span class="text-right font-mono tabular-nums">${fmtNum(v)} m³</span></div>`).join("")}<p class="text-xs text-slate-400">Per bulan</p>${editBtn}</div>`);
+  }
+}
+function viewOwn() {
+  const c = myCompany(), tab = route.params.tab || "emr";
+  const add = tab === "emr" ? btn("+ Tambah data contoh", 'data-act="emr-add"') : "";
+  return pageHead("Data Saya", `${esc(c.name)} · data yang Anda isi sendiri`, add) + tabsHtml(tab, "own", {}) + moduleContent(c.id, tab, false);
+}
+
+function guardMP() { const c = myCompany(); if (!c || c.depth > 0) return "Halaman ini hanya untuk perusahaan induk."; if (!hasMultiProperty(c.id)) return null; return true; }
+
+function viewChildren() {
+  const g = guardMP(); if (g === null) return lockedPage(); if (g !== true) return card(`<div class="p-8 text-sm">${g}</div>`);
+  const c = myCompany(), kids = childrenOf(c.id);
+  const csaAvg = kids.filter((k) => dataOf(k.id).csa).map((k) => dataOf(k.id).csa.skor);
+  let h = pageHead("Anak Perusahaan", `Perusahaan yang tertaut ke ${esc(c.name)}. Data anak hanya bisa dilihat.`, btn("Lihat di peta", 'data-go="mp-map"', "ghost") + btn("+ Ajukan anak perusahaan", 'data-act="req-new"'));
+  h += `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-2">${stat("Anak perusahaan", kids.length)}${stat("Data EMR", kids.reduce((a, k) => a + dataOf(k.id).emr.length, 0), kids.reduce((a, k) => a + overCount(k.id), 0) + " melebihi baku mutu")}${stat("Rata-rata CSA", csaAvg.length ? Math.round(csaAvg.reduce((a, b) => a + b, 0) / csaAvg.length) : "-")}${stat("Pengajuan menunggu", db.requests.filter((r) => r.parentCompanyId === c.id && r.status === "pending").length)}</div>`;
+  if (!kids.length) return h + card(`<div class="p-10 text-center text-sm text-slate-500">Belum ada anak perusahaan. Ajukan lewat tombol di atas.</div>`);
+  h += `<div class="relative w-full overflow-x-auto"><table class="rows w-full min-w-[860px] text-sm"><thead><tr class="text-[10px] uppercase font-bold text-slate-400 tracking-wider"><th class="px-4 text-left">Perusahaan</th><th class="px-4 text-left">Lokasi</th><th class="px-4 text-right">EMR</th><th class="px-4 text-right">CSA</th><th class="px-4 text-right">Regulasi patuh</th><th class="px-4 text-left">Update terakhir</th><th class="px-4 text-right">Aksi</th></tr></thead><tbody>`;
+  h += kids.map((k) => { const d = dataOf(k.id), g2 = db.gis[k.id]; return `<tr><td class="p-4"><div class="font-bold text-slate-800">${esc(k.name)}</div><div class="text-[11px] text-slate-500">ID ${esc(k.id)}</div></td><td class="p-4 text-slate-600 text-xs max-w-[14rem]">${esc(g2?.address || "-")}</td><td class="p-4 text-right tabular-nums">${d.emr.length}${overCount(k.id) ? ` <span class="text-rose-600 text-xs font-semibold">(${overCount(k.id)} lebih)</span>` : ""}</td><td class="p-4 text-right tabular-nums font-semibold">${d.csa ? d.csa.skor : "-"}</td><td class="p-4 text-right tabular-nums">${regPct(k.id) != null ? regPct(k.id) + "%" : "-"}</td><td class="p-4 text-slate-500">${ago(lastUpdate(k.id))}</td><td class="p-4 text-right">${btn("Lihat data", `data-go="mp-child" data-params='${esc(JSON.stringify({ id: k.id, tab: "emr" }))}'`, "ghost")}</td></tr>`; }).join("");
+  return h + `</tbody></table></div>`;
+}
+
+function viewChild() {
+  const g = guardMP(); if (g === null) return lockedPage(); if (g !== true) return card(`<div class="p-8 text-sm">${g}</div>`);
+  const id = route.params.id, k = company(id), tab = route.params.tab || "emr";
+  if (!k || k.parentCompanyId !== myCompany().id) {
+    return card(`<div class="p-8 text-center"><div class="text-lg font-bold text-rose-700">403 · Akses ditolak</div><p class="text-sm text-slate-500 mt-1">Perusahaan ini bukan anak perusahaan Anda.</p></div>`);
+  }
+  const g2 = db.gis[id];
+  let h = `<button class="text-sm text-[#0B57D0] font-semibold mb-3" data-go="mp-children">← Kembali ke daftar</button>`;
+  h += pageHead(esc(k.name), `${esc(g2?.address || "Lokasi belum diatur")} · update terakhir ${ago(lastUpdate(id))}`, pill("Anak perusahaan", "bg-blue-50 text-[#0B57D0] border border-blue-200"));
+  h += `<div class="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2.5 text-sm mb-4">${ic("eye", "w-4 h-4 shrink-0")}<span><b>Mode hanya-lihat.</b> Data diisi dan diubah oleh ${esc(k.name)} sendiri.</span></div>`;
+  return h + tabsHtml(tab, "mp-child", { id }) + moduleContent(id, tab, true);
+}
+
+function viewMap() {
+  const g = guardMP(); if (g === null) return lockedPage(); if (g !== true) return card(`<div class="p-8 text-sm">${g}</div>`);
+  const c = myCompany(), kids = childrenOf(c.id);
+  const list = [c, ...kids].map((x) => { const p = db.gis[x.id]; return `<button class="w-full text-left flex items-start gap-3 p-3 rounded-xl hover:bg-blue-50" data-act="map-focus" data-id="${x.id}"><span class="mt-1 w-3 h-3 rounded-full shrink-0 ${x.id === c.id ? "bg-[#0B57D0]" : "bg-orange-500"}"></span><span class="min-w-0"><span class="block font-semibold text-sm text-slate-800">${esc(x.name)}</span><span class="block text-xs text-slate-500">${p ? esc(p.address) : "Lokasi belum diatur"}</span><span class="block text-[11px] text-slate-400 font-mono">${p ? p.lat.toFixed(4) + ", " + p.lng.toFixed(4) : ""}</span></span></button>`; }).join("");
+  const mv = moveMode ? `<div class="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 text-sm mb-3"><span class="flex-1">Klik peta untuk memindahkan titik <b>${esc(company(moveMode).name)}</b>.</span>${btn("Batal", 'data-act="move-cancel"', "ghost")}</div>` : "";
+  return pageHead("Peta GIS", `Titik ${esc(c.name)} dan ${kids.length} anak perusahaan, dihubungkan garis.`) + mv +
+    `<div class="grid lg:grid-cols-[1fr_20rem] gap-4">${card(`<div id="map" class="h-[460px] sm:h-[560px]"></div>`, "p-1.5")}${card(`<div class="p-3"><div class="px-2 pb-2 text-[10px] uppercase font-bold text-slate-400 tracking-wider">Lokasi</div>${list}<div class="flex gap-4 px-2 pt-3 text-xs text-slate-500"><span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full bg-[#0B57D0]"></i>Induk</span><span class="flex items-center gap-1.5"><i class="w-2.5 h-2.5 rounded-full bg-orange-500"></i>Anak</span></div></div>`)}</div>`;
+}
+
+function viewRequests() {
+  const g = guardMP(); if (g === null) return lockedPage(); if (g !== true) return card(`<div class="p-8 text-sm">${g}</div>`);
+  const c = myCompany(), rs = db.requests.filter((r) => r.parentCompanyId === c.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  let h = pageHead("Pengajuan Anak Perusahaan", "Setiap pengajuan ditinjau admin MyESICS. Setelah disetujui, akun anak perusahaan dibuat otomatis.", btn("+ Ajukan anak perusahaan", 'data-act="req-new"'));
+  if (!rs.length) return h + card(`<div class="p-10 text-center text-sm text-slate-500">Belum ada pengajuan.</div>`);
+  h += `<div class="space-y-3">${rs.map((r) => card(`<div class="p-4 sm:p-5 flex flex-wrap gap-4 items-start"><div class="flex-1 min-w-[14rem] space-y-1"><div class="flex flex-wrap items-center gap-2"><span class="font-bold text-slate-800">${esc(r.companyName)}</span>${badge(r.status)}</div><div class="text-xs text-slate-500">PIC ${esc(r.picName)} · ${esc(r.picEmail)} · ${esc(r.address)}</div><div class="text-xs text-slate-400">Diajukan ${fmtDate(r.createdAt)}${r.reviewedAt ? ` · ditinjau ${fmtDate(r.reviewedAt)} oleh ${esc(r.reviewedBy)}` : ""}</div>${r.status === "rejected" ? `<div class="text-sm text-rose-700 bg-rose-50 rounded-lg px-3 py-2 mt-2">Alasan: ${esc(r.rejectReason)}</div>` : ""}${r.status === "approved" ? `<div class="text-sm text-emerald-800 bg-emerald-50 rounded-lg px-3 py-2 mt-2">Akun dibuat. Link pembuatan password dikirim ke ${esc(r.picEmail)}.</div>` : ""}</div><div class="flex gap-2">${r.status === "pending" ? btn("Batalkan", `data-act="req-cancel" data-id="${r.id}"`, "danger") : ""}${r.status === "approved" ? btn("Lihat data", `data-go="mp-child" data-params='${esc(JSON.stringify({ id: r.childCompanyId, tab: "emr" }))}'`, "ghost") : ""}</div></div>`)).join("")}</div>`;
+  return h;
+}
+
+/* ================= HALAMAN ADMIN ================= */
+function viewAdmRequests() {
+  const f = route.params.status || "pending";
+  const rs = db.requests.filter((r) => f === "all" || r.status === f).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const tabs = [["pending", "Menunggu"], ["approved", "Disetujui"], ["rejected", "Ditolak"], ["cancelled", "Dibatalkan"], ["all", "Semua"]];
+  let h = pageHead("Pengajuan Anak Perusahaan", "Tinjau pengajuan dari perusahaan induk. Menyetujui akan membuat akun, perusahaan anak, dan titik lokasinya.");
+  h += `<div class="flex gap-1 bg-white/70 border border-blue-100 rounded-xl p-1 mb-2 overflow-x-auto">${tabs.map(([k, l]) => `<button class="px-3.5 py-1.5 rounded-lg text-sm whitespace-nowrap ${k === f ? "bg-[#0B57D0] text-white font-bold shadow" : "text-slate-600 hover:bg-white"}" data-go="adm-requests" data-params='${esc(JSON.stringify({ status: k }))}'>${l} <span class="opacity-70">${db.requests.filter((r) => k === "all" || r.status === k).length}</span></button>`).join("")}</div>`;
+  if (!rs.length) return h + card(`<div class="p-10 text-center text-sm text-slate-500">Tidak ada pengajuan di status ini.</div>`, "mt-3");
+  h += `<div class="relative w-full overflow-x-auto"><table class="rows w-full min-w-[820px] text-sm"><thead><tr class="text-[10px] uppercase font-bold text-slate-400 tracking-wider"><th class="px-4 text-left">Calon anak perusahaan</th><th class="px-4 text-left">Induk</th><th class="px-4 text-left">PIC</th><th class="px-4 text-left">Diajukan</th><th class="px-4 text-left">Status</th><th class="px-4 text-right">Aksi</th></tr></thead><tbody>${rs.map((r) => `<tr><td class="p-4"><div class="font-bold text-slate-800">${esc(r.companyName)}</div><div class="text-[11px] text-slate-500">${esc(r.address)}</div></td><td class="p-4 text-slate-700">${esc(company(r.parentCompanyId)?.name)}</td><td class="p-4"><div>${esc(r.picName)}</div><div class="text-[11px] text-slate-500">${esc(r.picEmail)}</div></td><td class="p-4 text-slate-500">${fmtDate(r.createdAt)}</td><td class="p-4">${badge(r.status)}</td><td class="p-4 text-right">${btn(r.status === "pending" ? "Tinjau" : "Detail", `data-act="adm-review" data-id="${r.id}"`, r.status === "pending" ? "primary" : "ghost")}</td></tr>`).join("")}</tbody></table></div>`;
+  return h;
+}
+
+function viewAdmCompanies() {
+  const parents = db.companies.filter((c) => c.depth === 0);
+  const linkable = db.companies.filter((c) => c.depth === 0 && !childrenOf(c.id).length && !hasMultiProperty(c.id));
+  const customParents = parents.filter((c) => hasMultiProperty(c.id));
+  let h = pageHead("Hierarki Perusahaan", "Induk dan anak perusahaan. Admin bisa menautkan perusahaan yang sudah terdaftar atau melepas tautan.");
+  h += card(`<div class="p-5 space-y-3"><div class="font-bold text-slate-800">Tautkan perusahaan yang sudah terdaftar</div><div class="grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end"><div class="space-y-1.5"><label for="lnkChild" class="text-sm font-medium">Perusahaan (jadi anak)</label><select id="lnkChild" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${linkable.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("") || "<option value=''>Tidak ada</option>"}</select></div><div class="space-y-1.5"><label for="lnkParent" class="text-sm font-medium">Induk (paket custom aktif)</label><select id="lnkParent" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${customParents.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("") || "<option value=''>Tidak ada</option>"}</select></div>${btn("Tautkan", 'data-act="adm-link"')}</div></div>`, "mb-4");
+  h += `<div class="space-y-3">${parents.map((p) => { const kids = childrenOf(p.id), s = activeSub(p.id); return card(`<div class="p-4 sm:p-5"><div class="flex flex-wrap items-center gap-2"><span class="font-bold text-slate-800">${esc(p.name)}</span>${s ? pill(esc(pkg(s.packageId).name), pkg(s.packageId).isCustom ? "bg-[#0B57D0] text-white" : "bg-slate-100 text-slate-600") : pill("Tanpa langganan", "bg-slate-100 text-slate-500")}${hasMultiProperty(p.id) ? pill("Multi Property aktif", "bg-emerald-50 text-emerald-700") : ""}</div>${kids.length ? `<div class="mt-3 ml-2 pl-4 border-l-2 border-blue-100 space-y-2">${kids.map((k) => `<div class="flex flex-wrap items-center justify-between gap-2"><span class="text-sm text-slate-700">↳ ${esc(k.name)} <span class="text-[11px] text-slate-400 font-mono">${esc(k.path)}</span></span><button class="text-xs font-semibold text-rose-600 border border-rose-200 rounded-lg px-2.5 py-1 hover:bg-rose-50" data-act="adm-detach" data-id="${k.id}">Lepas tautan</button></div>`).join("")}</div>` : `<div class="text-xs text-slate-400 mt-1">Belum ada anak perusahaan</div>`}</div>`); }).join("")}</div>`;
+  return h;
+}
+
+function viewAdmPackages() {
+  let h = pageHead("Paket", "Tandai paket sebagai paket custom. Perusahaan dengan langganan aktif paket custom otomatis mendapat Multi Property.");
+  h += `<div class="relative w-full overflow-x-auto"><table class="rows w-full min-w-[640px] text-sm"><thead><tr class="text-[10px] uppercase font-bold text-slate-400 tracking-wider"><th class="px-4 text-left">Paket</th><th class="px-4 text-right">Harga</th><th class="px-4 text-right">Pelanggan aktif</th><th class="px-4 text-left">Paket custom</th></tr></thead><tbody>${db.packages.map((p) => `<tr><td class="p-4 font-bold text-slate-800">${esc(p.name)}</td><td class="p-4 text-right font-mono tabular-nums">${rupiah(p.harga)}</td><td class="p-4 text-right tabular-nums">${db.subscriptions.filter((s) => s.packageId === p.id && activeSub(s.companyId)).length}</td><td class="p-4"><label class="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" id="pk-${p.id}" data-act="pkg-toggle" data-id="${p.id}" ${p.isCustom ? "checked" : ""} class="w-4 h-4 accent-[#0B57D0]"><span class="text-sm ${p.isCustom ? "font-bold text-[#0B57D0]" : "text-slate-500"}">${p.isCustom ? "Ya (isCustom = true)" : "Tidak"}</span></label></td></tr>`).join("")}</tbody></table></div>`;
+  h += `<p class="text-xs text-slate-500 mt-2">Coba matikan "Paket Custom Grup", lalu login sebagai PT Sinar Hijau Group: menu Multi Property akan terkunci.</p>`;
+  return h;
+}
+
+/* ================= RENDER ================= */
+let map = null, miniMap = null, moveMode = null;
+const VIEWS = { dashboard: viewDashboard, own: viewOwn, "mp-children": viewChildren, "mp-child": viewChild, "mp-map": viewMap, "mp-requests": viewRequests, "adm-requests": viewAdmRequests, "adm-companies": viewAdmCompanies, "adm-packages": viewAdmPackages };
+const API_FOR = {
+  dashboard: () => ["GET", "/api/multiproperty/status (Esic_BE)", 200, `hasMultiProperty = ${hasMultiProperty(myCompany()?.id)}`],
+  "mp-children": () => hasMultiProperty(myCompany().id) ? ["GET", "/api/multiproperty/children (phase3)", 200, `${childrenOf(myCompany().id).length} anak`] : ["GET", "/api/multiproperty/children (phase3)", 403, "MODULE_NOT_SUBSCRIBED: bukan paket custom"],
+  "mp-child": () => { const k = company(route.params.id); const ok = k && k.parentCompanyId === myCompany().id; return ["GET", `/api/emr/... x-company-id: ${route.params.id} (phase3)`, ok ? 200 : 403, ok ? `childScope → owner_key user anak: [${usersOf(k).map((u) => u.id).join(", ")}], tab ${route.params.tab}` : "bukan anak perusahaan Anda"]; },
+  "mp-map": () => hasMultiProperty(myCompany().id) ? ["GET", "/api/gis/features (phase3)", 200, `GeoJSON: ${childrenOf(myCompany().id).length + 1} titik, ${childrenOf(myCompany().id).length} garis`] : ["GET", "/api/gis/features (phase3)", 403, "bukan paket custom"],
+  "mp-requests": () => hasMultiProperty(myCompany().id) ? ["GET", "/api/multiproperty/child-requests (Esic_BE)", 200, ""] : ["GET", "/api/multiproperty/child-requests (Esic_BE)", 403, "bukan paket custom"],
+  "adm-requests": () => ["GET", `/api/admin/child-requests?status=${route.params.status || "pending"} (Esic_BE)`, 200, ""],
+};
+
+function render() {
+  if (map) { map.remove(); map = null; }
+  if (isAdmin() && !route.view.startsWith("adm")) route = { view: "adm-requests", params: {} };
+  if (!isAdmin() && route.view.startsWith("adm")) route = { view: "dashboard", params: {} };
+  $("#sidebar").innerHTML = sidebarHtml();
+  $("#sidebarMobile").innerHTML = sidebarHtml();
+  $("#pageTitle").textContent = TITLES[route.view] || "";
+  const u = me(), c = myCompany();
+  $("#userChip").innerHTML = `<div class="h-8 w-8 rounded-full bg-[#0B57D0] text-white flex items-center justify-center font-bold text-sm shrink-0">${esc(u.name[0])}</div><div class="min-w-0 hidden sm:block"><div class="text-xs font-bold text-slate-800 truncate">${esc(u.name)}</div><div class="text-[11px] text-slate-500 truncate">${isAdmin() ? "Admin MyESICS" : esc(c?.name)}</div></div>`;
+  $("#main").innerHTML = `<div class="fade-in max-w-6xl mx-auto">${VIEWS[route.view]()}</div>`;
+  if (API_FOR[route.view]) api(...API_FOR[route.view]());
+  if (route.view === "mp-map" && $("#map")) initMap();
+  renderRoleSel();
+  save();
+}
+
+function renderRoleSel() {
+  const sel = $("#roleSel");
+  sel.innerHTML = db.users.map((u) => { const c = companyOf(u); const tag = u.role === "admin" ? "Admin" : c?.depth > 0 ? "Anak" : hasMultiProperty(c?.id) ? "Induk · Custom" : "Paket biasa"; return `<option value="${u.id}" ${u.id === db.session.userId ? "selected" : ""}>${esc(u.role === "admin" ? "Admin MyESICS" : c?.name || u.name)} (${tag})</option>`; }).join("");
+}
+
+/* ================= PETA ================= */
+function hasLeaflet() { return typeof L !== "undefined"; }
+function initMap() {
+  if (!hasLeaflet()) { $("#map").innerHTML = `<div class="h-full grid place-items-center text-sm text-slate-500 p-6 text-center">Library peta (Leaflet) gagal dimuat. Pastikan ada koneksi internet.</div>`; return; }
+  const c = myCompany(), kids = childrenOf(c.id), pg = db.gis[c.id];
+  map = L.map("map", { zoomControl: true }).setView(pg ? [pg.lat, pg.lng] : [-2.5, 117], 7);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: "© OpenStreetMap" }).addTo(map);
+  const pts = [];
+  const popup = (x, isParent) => { const d = dataOf(x.id), p = db.gis[x.id]; return `<div style="min-width:190px"><div style="font-weight:800">${esc(x.name)}</div><div style="font-size:11px;color:#64748b;margin-bottom:6px">${isParent ? "Perusahaan induk" : "Anak perusahaan"} · ${esc(p.address)}</div><div style="font-size:12px">EMR: <b>${d.emr.length}</b> data${overCount(x.id) ? ` · <span style="color:#be123c">${overCount(x.id)} melebihi</span>` : ""}<br>CSA: <b>${d.csa ? d.csa.skor : "-"}</b> · Update: ${ago(lastUpdate(x.id))}</div><div style="display:flex;gap:6px;margin-top:8px">${isParent ? "" : `<button onclick="go('mp-child',{id:'${x.id}',tab:'emr'})" style="background:#0B57D0;color:#fff;border:0;border-radius:8px;padding:4px 10px;font-weight:700;font-size:12px;cursor:pointer">Lihat data</button>`}<button onclick="startMove('${x.id}')" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:4px 10px;font-weight:600;font-size:12px;cursor:pointer">Pindahkan titik</button></div></div>`; };
+  if (pg) { L.circleMarker([pg.lat, pg.lng], { radius: 12, color: "#fff", weight: 3, fillColor: "#0B57D0", fillOpacity: 1 }).addTo(map).bindPopup(popup(c, true)); pts.push([pg.lat, pg.lng]); }
+  kids.forEach((k) => { const p = db.gis[k.id]; if (!p) return; if (pg) L.polyline([[pg.lat, pg.lng], [p.lat, p.lng]], { color: "#0B57D0", weight: 2, dashArray: "6 6", opacity: .8 }).addTo(map); L.circleMarker([p.lat, p.lng], { radius: 9, color: "#fff", weight: 3, fillColor: "#f97316", fillOpacity: 1 }).addTo(map).bindPopup(popup(k, false)); pts.push([p.lat, p.lng]); });
+  if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40] });
+  map.on("click", (e) => {
+    if (!moveMode) return;
+    const id = moveMode, old = db.gis[id] || { address: "-" };
+    db.gis[id] = { ...old, lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
+    api("PUT", `/api/gis/companies/${id} (phase3)`, 200, `lat ${db.gis[id].lat}, lng ${db.gis[id].lng}`);
+    toast(`Titik <b>${esc(company(id).name)}</b> dipindahkan.`);
+    moveMode = null; render();
+  });
+}
+function startMove(id) { moveMode = id; render(); }
+
+/* ================= MODAL ================= */
+function openModal(html, after) { $("#modalBox").innerHTML = html; $("#modal").classList.remove("hidden"); if (after) setTimeout(after, 30); }
+function closeModal() { if (miniMap) { miniMap.remove(); miniMap = null; } $("#modal").classList.add("hidden"); }
+
+function reqForm() {
+  openModal(`<div class="p-5 sm:p-6 border-b border-slate-100"><h2 class="text-lg font-bold">Ajukan Anak Perusahaan</h2><p class="text-sm text-slate-500">Admin MyESICS akan meninjau dan membuatkan akun untuk PIC.</p></div>
+  <form id="reqForm" class="p-5 sm:p-6 space-y-4" novalidate>
+    <div class="grid sm:grid-cols-2 gap-4">${field("rq-name", "Nama perusahaan *", "PT Sinar Hijau Batam")}${field("rq-pic", "Nama PIC *", "Yusuf Hidayat")}${field("rq-email", "Email PIC *", "yusuf@sinarhijau-btm.co.id", "", "email")}${field("rq-phone", "No. HP PIC", "081298765432")}</div>
+    ${field("rq-addr", "Alamat", "Kawasan Industri Batamindo, Batam")}
+    <div class="space-y-1.5"><span class="text-sm font-medium text-slate-700">Titik lokasi * <span class="text-slate-400 font-normal">(klik peta atau isi manual)</span></span><div id="miniMap" class="h-56 rounded-xl border border-slate-200 bg-slate-50"></div></div>
+    <div class="grid grid-cols-2 gap-4">${field("rq-lat", "Latitude", "1.0450", 'inputmode="decimal"')}${field("rq-lng", "Longitude", "104.0305", 'inputmode="decimal"')}</div>
+    <div class="space-y-1.5"><label for="rq-notes" class="text-sm font-medium text-slate-700">Catatan</label><textarea id="rq-notes" rows="2" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#0B57D0]">Gudang dan pabrik perakitan.</textarea></div>
+    <div id="rq-err" class="hidden text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></div>
+    <div class="flex justify-end gap-2 pt-2">${btn("Batal", 'type="button" data-close-modal', "ghost")}${btn("Kirim pengajuan", 'type="submit"')}</div>
+  </form>`, () => {
+    if (!hasLeaflet()) return;
+    const lat = () => parseFloat($("#rq-lat").value), lng = () => parseFloat($("#rq-lng").value);
+    miniMap = L.map("miniMap").setView([lat() || -2.5, lng() || 117], 5);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(miniMap);
+    let mk = L.circleMarker([lat(), lng()], { radius: 9, color: "#fff", weight: 3, fillColor: "#f97316", fillOpacity: 1 }).addTo(miniMap);
+    miniMap.on("click", (e) => { $("#rq-lat").value = e.latlng.lat.toFixed(5); $("#rq-lng").value = e.latlng.lng.toFixed(5); mk.setLatLng(e.latlng); });
+  });
+}
+function submitReq(e) {
+  e.preventDefault();
+  const v = (id) => $("#" + id).value.trim();
+  const lat = parseFloat(v("rq-lat")), lng = parseFloat(v("rq-lng"));
+  const errs = [];
+  if (!v("rq-name")) errs.push("Nama perusahaan wajib diisi.");
+  if (!v("rq-pic")) errs.push("Nama PIC wajib diisi.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v("rq-email"))) errs.push("Email PIC tidak valid.");
+  if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) errs.push("Koordinat di luar rentang (lat −90..90, lng −180..180).");
+  if (errs.length) { $("#rq-err").innerHTML = errs.join("<br>"); $("#rq-err").classList.remove("hidden"); api("POST", "/api/multiproperty/child-requests (Esic_BE)", 422, errs[0]); return; }
+  const r = { id: db.seq.request++, parentCompanyId: myCompany().id, requestedByUserId: me().id, companyName: v("rq-name"), picName: v("rq-pic"), picEmail: v("rq-email").toLowerCase(), picPhone: v("rq-phone"), address: v("rq-addr"), lat, lng, notes: v("rq-notes"), status: "pending", createdAt: new Date().toISOString() };
+  db.requests.push(r);
+  api("POST", "/api/multiproperty/child-requests (Esic_BE)", 201, `id ${r.id}, status pending`);
+  closeModal(); toast(`Pengajuan <b>${esc(r.companyName)}</b> terkirim. Menunggu persetujuan admin.`);
+  go("mp-requests");
+}
+
+function admReview(id) {
+  const r = db.requests.find((x) => x.id === id), p = company(r.parentCompanyId), s = activeSub(p.id), ok = hasMultiProperty(p.id), pend = r.status === "pending";
+  api("GET", `/api/admin/child-requests/${id} (Esic_BE)`, 200, "");
+  const ro = pend ? "" : "disabled";
+  openModal(`<div class="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between gap-3"><div><h2 class="text-lg font-bold">${pend ? "Tinjau" : "Detail"} pengajuan #${r.id}</h2><p class="text-sm text-slate-500">Diajukan ${fmtDate(r.createdAt)} oleh ${esc(db.users.find((u) => u.id === r.requestedByUserId)?.name)}</p></div>${badge(r.status)}</div>
+  <div class="p-5 sm:p-6 space-y-4">
+    <div class="rounded-xl border ${ok ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"} px-4 py-3 text-sm"><b>Induk:</b> ${esc(p.name)} · ${s ? esc(pkg(s.packageId).name) + " aktif s.d. " + fmtDate(s.endDate) : "tidak ada langganan aktif"}<br>${ok ? "✓ Paket custom aktif, boleh punya anak perusahaan." : "✕ Induk tidak punya paket custom aktif. Persetujuan akan ditolak sistem."}</div>
+    <p class="text-xs text-slate-500">${pend ? "Admin boleh melengkapi atau mengoreksi data sebelum menyetujui." : ""}</p>
+    <div class="grid sm:grid-cols-2 gap-4">${field("ad-name", "Nama perusahaan", r.companyName, ro)}${field("ad-pic", "Nama PIC", r.picName, ro)}${field("ad-email", "Email PIC (untuk login)", r.picEmail, ro)}${field("ad-phone", "No. HP", r.picPhone, ro)}</div>
+    ${field("ad-addr", "Alamat", r.address, ro)}
+    <div class="grid grid-cols-2 gap-4">${field("ad-lat", "Latitude", r.lat, ro)}${field("ad-lng", "Longitude", r.lng, ro)}</div>
+    ${r.notes ? `<div class="text-sm bg-slate-50 rounded-xl px-3 py-2"><b>Catatan induk:</b> ${esc(r.notes)}</div>` : ""}
+    ${r.status === "rejected" ? `<div class="text-sm text-rose-700 bg-rose-50 rounded-xl px-3 py-2">Alasan ditolak: ${esc(r.rejectReason)}</div>` : ""}
+    ${r.status === "approved" ? `<div class="text-sm text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2">Disetujui ${fmtDate(r.reviewedAt)} oleh ${esc(r.reviewedBy)}. Perusahaan anak: <b>${esc(company(r.childCompanyId)?.name)}</b> (ID ${esc(r.childCompanyId)}).</div>` : ""}
+    ${pend ? `<div class="space-y-1.5"><label for="ad-reason" class="text-sm font-medium text-slate-700">Alasan penolakan <span class="text-slate-400 font-normal">(wajib bila menolak)</span></label><textarea id="ad-reason" rows="2" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[#0B57D0]"></textarea></div>` : ""}
+    <div id="ad-err" class="hidden text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2"></div>
+    <div class="flex flex-wrap justify-end gap-2 pt-2">${btn("Tutup", "data-close-modal", "ghost")}${pend ? btn("Tolak", `data-act="adm-reject" data-id="${r.id}"`, "danger") + btn("Setujui & buat akun", `data-act="adm-approve" data-id="${r.id}"`, "ok") : ""}</div>
+  </div>`);
+}
+function admErr(msg, path, code) { $("#ad-err").textContent = msg; $("#ad-err").classList.remove("hidden"); api("POST", path, code, msg); }
+
+function admApprove(id) {
+  const r = db.requests.find((x) => x.id === id), path = `/api/admin/child-requests/${id}/approve (Esic_BE)`;
+  const v = (k) => $("#" + k).value.trim();
+  const email = v("ad-email").toLowerCase(), lat = parseFloat(v("ad-lat")), lng = parseFloat(v("ad-lng"));
+  // 1. cek ulang
+  if (!hasMultiProperty(r.parentCompanyId)) return admErr("Induk tidak lagi punya paket custom aktif.", path, 409);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return admErr("Email PIC tidak valid.", path, 422);
+  if (db.users.some((u) => u.email.toLowerCase() === email)) return admErr(`Email ${email} sudah dipakai akun lain.`, path, 409);
+  if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) return admErr("Koordinat di luar rentang.", path, 422);
+  // 2. Person -> Users -> Company (satu transaksi)
+  const parent = company(r.parentCompanyId);
+  const personKey = Math.max(...db.users.map((u) => u.personKey)) + 1;
+  const ym = new Date().getFullYear() + String(new Date().getMonth() + 1).padStart(2, "0");
+  const cid = `${personKey}${ym}001`;
+  let base = v("ad-pic").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim().replace(/\s+/g, "."), username = base, n = 1;
+  while (db.users.some((u) => u.username === username)) username = base + ++n;
+  db.users.push({ id: db.seq.user++, personKey, name: v("ad-pic"), email, username, role: "member" });
+  db.companies.push({ id: cid, personKey, name: v("ad-name"), parentCompanyId: parent.id, path: parent.path + cid + "/", depth: parent.depth + 1 });
+  // 3. lokasi
+  db.gis[cid] = { lat, lng, address: v("ad-addr") };
+  db.data[cid] = makeData(0, true);
+  // 4. update pengajuan
+  Object.assign(r, { companyName: v("ad-name"), picName: v("ad-pic"), picEmail: email, picPhone: v("ad-phone"), address: v("ad-addr"), lat, lng, status: "approved", childCompanyId: cid, reviewedBy: me().name, reviewedAt: new Date().toISOString() });
+  api("POST", path, 200, `TRANSAKSI: Person ${personKey} → Users ${username} (member) → Company ${cid} (parent ${parent.id}, depth 1) → company_gis → request approved`);
+  api("EMAIL", `→ ${email}`, 200, "Link buat password (mekanisme reset password)");
+  api("EMAIL", `→ ${usersOf(parent)[0]?.email}`, 200, "Notifikasi: pengajuan disetujui");
+  closeModal();
+  toast(`Disetujui. Akun <b>${esc(username)}</b> dan perusahaan <b>${esc(v("ad-name"))}</b> dibuat. Email terkirim ke ${esc(email)}.`);
+  render();
+}
+function admReject(id) {
+  const r = db.requests.find((x) => x.id === id), reason = $("#ad-reason").value.trim(), path = `/api/admin/child-requests/${id}/reject (Esic_BE)`;
+  if (!reason) return admErr("Alasan penolakan wajib diisi.", path, 422);
+  Object.assign(r, { status: "rejected", rejectReason: reason, reviewedBy: me().name, reviewedAt: new Date().toISOString() });
+  api("POST", path, 200, "status rejected");
+  api("EMAIL", `→ ${usersOf(company(r.parentCompanyId))[0]?.email}`, 200, "Notifikasi: pengajuan ditolak + alasan");
+  closeModal(); toast(`Pengajuan <b>${esc(r.companyName)}</b> ditolak.`, "info"); render();
+}
+
+/* ================= EVENT ================= */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-go],[data-act],[data-close-modal],[data-close-nav]");
+  if (!t) return;
+  if (t.hasAttribute("data-close-modal")) return closeModal();
+  if (t.hasAttribute("data-close-nav")) return closeNav();
+  if (t.dataset.go) return go(t.dataset.go, JSON.parse(t.dataset.params || "{}"));
+  const a = t.dataset.act, id = t.dataset.id;
+  if (a === "req-new") return reqForm();
+  if (a === "req-cancel") { const r = db.requests.find((x) => x.id === +id); if (r.status !== "pending") { api("PATCH", `/api/multiproperty/child-requests/${id}/cancel`, 409, "hanya pending"); return; } r.status = "cancelled"; api("PATCH", `/api/multiproperty/child-requests/${id}/cancel (Esic_BE)`, 200, "status cancelled"); toast("Pengajuan dibatalkan.", "info"); return render(); }
+  if (a === "ro-edit") { api("PUT", `/api/${t.dataset.tab}/... x-company-id: ${t.dataset.cid} (phase3)`, 403, "childScope: data anak hanya-lihat untuk induk"); return toast("Ditolak: data anak perusahaan <b>hanya bisa dilihat</b> oleh induk.", "err"); }
+  if (a === "emr-add") { const c = myCompany(), d = dataOf(c.id); const opts = [["Air Limbah", "Outlet IPAL 2", "TSS", 200, "mg/L"], ["Gas Emisi", "Cerobong Genset", "CO", 540, "mg/Nm³"], ["Udara Ambient", "Batas Pagar Selatan", "PM10", 75, "µg/Nm³"]]; const o = opts[d.emr.length % 3]; const nilai = Math.round(o[3] * (0.5 + Math.random() * 0.65) * 10) / 10; d.emr.push({ id: db.seq.emr++, jenis: o[0], titik: o[1], parameter: o[2], nilai, baku: o[3], satuan: o[4], tanggal: new Date().toISOString() }); api("POST", "/api/emr/... (phase3)", 201, `owner_key = user ${me().id}`); toast("Data EMR contoh ditambahkan." + (c.parentCompanyId ? " Induk sekarang bisa melihatnya." : "")); return render(); }
+  if (a === "emr-del") { const d = dataOf(myCompany().id); d.emr = d.emr.filter((x) => x.id !== +id); api("DELETE", `/api/emr/${id} (phase3)`, 200, ""); return render(); }
+  if (a === "map-focus") { const p = db.gis[id]; if (map && p) map.flyTo([p.lat, p.lng], 12); return; }
+  if (a === "move-cancel") { moveMode = null; return render(); }
+  if (a === "adm-review") return admReview(+id);
+  if (a === "adm-approve") return admApprove(+id);
+  if (a === "adm-reject") return admReject(+id);
+  if (a === "adm-link") { const ch = $("#lnkChild").value, pa = $("#lnkParent").value; if (!ch || !pa) return toast("Pilih perusahaan dan induk.", "err"); const c = company(ch), p = company(pa); Object.assign(c, { parentCompanyId: p.id, path: p.path + c.id + "/", depth: p.depth + 1 }); api("POST", `/api/admin/companies/${pa}/children (Esic_BE)`, 200, `tautkan ${ch}`); toast(`<b>${esc(c.name)}</b> sekarang anak dari <b>${esc(p.name)}</b>.`); return render(); }
+  if (a === "adm-detach") { const c = company(id); Object.assign(c, { parentCompanyId: null, path: "/" + c.id + "/", depth: 0 }); api("DELETE", `/api/admin/companies/${id}/parent (Esic_BE)`, 200, "lepas tautan, data anak tetap ada"); toast(`Tautan <b>${esc(c.name)}</b> dilepas.`, "info"); return render(); }
+});
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset?.act === "pkg-toggle") { const p = pkg(+t.dataset.id); p.isCustom = t.checked; api("PUT", `/api/packages/${p.id} (Esic_BE)`, 200, `isCustom = ${p.isCustom}`); toast(`${esc(p.name)}: paket custom ${p.isCustom ? "aktif" : "nonaktif"}.`, "info"); render(); }
+});
+document.addEventListener("submit", (e) => { if (e.target.id === "reqForm") submitReq(e); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); closeNav(); } });
+
+$("#roleSel").addEventListener("change", (e) => { db.session.userId = +e.target.value; moveMode = null; route = { view: isAdmin() ? "adm-requests" : "dashboard", params: {} }; toast(`Login sebagai <b>${esc(me().name)}</b>.`, "info"); render(); });
+$("#btnReset").addEventListener("click", () => { db = seed(); logs.length = 0; $("#logCount").textContent = 0; renderLog(); route = { view: "dashboard", params: {} }; toast("Data dummy dikembalikan ke awal.", "info"); render(); });
+$("#btnLog").addEventListener("click", () => { const p = $("#logPanel"); p.classList.toggle("hidden"); p.classList.toggle("flex"); });
+$("#btnLogClose").addEventListener("click", () => { $("#logPanel").classList.add("hidden"); $("#logPanel").classList.remove("flex"); });
+$("#btnMenu").addEventListener("click", () => $("#mobileNav").classList.remove("hidden"));
+function closeNav() { $("#mobileNav").classList.add("hidden"); }
+
+renderLog();
+render();
+</script>
+</body>
+</html>
